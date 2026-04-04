@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHIEF - 多Agent错误归因分析Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <span class="logo-icon">🎯</span>
+                <span class="logo-text">CHIEF</span>
+            </div>
+            <div class="nav-menu">
+                <button class="nav-item active" data-section="overview">概览</button>
+                <button class="nav-item" data-section="analysis">分析</button>
+                <button class="nav-item" data-section="cases">案例</button>
+                <button class="nav-item" data-section="flow">流程可视化</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 数据集切换器 -->
+    <div class="dataset-switcher">
+        <div class="dataset-switcher-container">
+            <span class="dataset-label">当前数据集：</span>
+            <div class="dataset-buttons">
+                <button class="dataset-btn active" data-dataset="all">
+                    <span class="dataset-icon">📊</span>
+                    <span class="dataset-name">全部数据</span>
+                    <span class="dataset-count">184</span>
+                </button>
+                <button class="dataset-btn" data-dataset="algorithm">
+                    <span class="dataset-icon">🤖</span>
+                    <span class="dataset-name">算法生成</span>
+                    <span class="dataset-count">126</span>
+                </button>
+                <button class="dataset-btn" data-dataset="handcrafted">
+                    <span class="dataset-icon">👥</span>
+                    <span class="dataset-name">手工标注</span>
+                    <span class="dataset-count">58</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+        <!-- 概览面板 -->
+        <section id="overview" class="section active">
+            <div class="section-header">
+                <h1 class="section-title">数据集概览</h1>
+                <p class="section-subtitle">Who&When 基准数据集 - 多Agent系统错误归因</p>
+            </div>
+
+            <!-- 统计卡片 -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalCases">184</div>
+                        <div class="stat-label">总案例数</div>
+                    </div>
+                    <div class="stat-trend">
+                        <span class="trend-indicator">100%</span>
+                        <span class="trend-label">完整数据集</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">🤖</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="algorithmCases">126</div>
+                        <div class="stat-label">算法生成</div>
+                    </div>
+                    <div class="stat-trend">
+                        <span class="trend-indicator">68.5%</span>
+                        <span class="trend-label">数据集占比</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="handcraftedCases">58</div>
+                        <div class="stat-label">手工标注</div>
+                    </div>
+                    <div class="stat-trend">
+                        <span class="trend-indicator">31.5%</span>
+                        <span class="trend-label">数据集占比</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">⚠️</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="uniqueAgents">--</div>
+                        <div class="stat-label">错误Agent类型</div>
+                    </div>
+                    <div class="stat-trend">
+                        <span class="trend-indicator">多样化</span>
+                        <span class="trend-label">错误分布</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">难度等级分布</h3>
+                        <div class="chart-legend">
+                            <span class="legend-item" data-level="1">Level 1</span>
+                            <span class="legend-item" data-level="2">Level 2</span>
+                            <span class="legend-item" data-level="3">Level 3</span>
+                        </div>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="levelChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">错误Agent分布（Top 10）</h3>
+                        <div class="chart-legend">
+                            <span class="legend-item">按错误次数排序</span>
+                        </div>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="agentChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">错误步骤分布</h3>
+                        <div class="chart-legend">
+                            <span class="legend-item">错误发生的步骤</span>
+                        </div>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="stepChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">数据集类型分布</h3>
+                        <div class="chart-legend">
+                            <span class="legend-item">算法生成 vs 手工标注</span>
+                        </div>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="datasetChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 分析面板 -->
+        <section id="analysis" class="section">
+            <div class="section-header">
+                <h1 class="section-title">详细分析</h1>
+                <p class="section-subtitle">深入探索错误模式和归因结果</p>
+            </div>
+
+            <!-- 筛选区域 -->
+            <div class="filter-section">
+                <div class="filter-group">
+                    <label class="filter-label">数据集类型</label>
+                    <select class="filter-select" id="datasetFilter">
+                        <option value="all">全部</option>
+                        <option value="algorithm">算法生成</option>
+                        <option value="handcrafted">手工标注</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">难度等级</label>
+                    <select class="filter-select" id="levelFilter">
+                        <option value="all">全部</option>
+                        <option value="1">Level 1</option>
+                        <option value="2">Level 2</option>
+                        <option value="3">Level 3</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">错误Agent</label>
+                    <select class="filter-select" id="agentFilter">
+                        <option value="all">全部</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">错误步骤</label>
+                    <select class="filter-select" id="stepFilter">
+                        <option value="all">全部</option>
+                    </select>
+                </div>
+
+                <button class="filter-btn" id="applyFilters">应用筛选</button>
+                <button class="filter-btn secondary" id="resetFilters">重置</button>
+            </div>
+
+            <!-- 分析结果 -->
+            <div class="analysis-grid">
+                <div class="analysis-card">
+                    <div class="analysis-header">
+                        <h3 class="analysis-title">筛选结果统计</h3>
+                    </div>
+                    <div class="analysis-body">
+                        <div class="analysis-metric">
+                            <span class="metric-label">匹配案例</span>
+                            <span class="metric-value" id="filteredCount">--</span>
+                        </div>
+                        <div class="analysis-metric">
+                            <span class="metric-label">平均错误步骤</span>
+                            <span class="metric-value" id="avgStep">--</span>
+                        </div>
+                        <div class="analysis-metric">
+                            <span class="metric-label">最常见错误Agent</span>
+                            <span class="metric-value" id="topAgent">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-card full-width">
+                    <div class="analysis-header">
+                        <h3 class="analysis-title">错误原因分析</h3>
+                    </div>
+                    <div class="analysis-body">
+                        <div id="errorReasons" class="error-reasons">
+                            <!-- 动态生成错误原因列表 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 流程可视化面板 -->
+        <section id="flow" class="section">
+            <div class="section-header">
+                <h1 class="section-title">Agent流程可视化</h1>
+                <p class="section-subtitle">生动展示多Agent系统的执行流程和错误定位</p>
+            </div>
+
+            <!-- 案例选择器 -->
+            <div class="flow-controls">
+                <div class="flow-search">
+                    <input type="text" class="flow-search-input" placeholder="搜索案例ID或描述..." id="flowSearch">
+                    <select class="flow-dataset-select" id="flowDatasetSelect">
+                        <option value="all">全部数据集</option>
+                        <option value="algorithm">算法生成</option>
+                        <option value="handcrafted">手工标注</option>
+                    </select>
+                </div>
+                <div class="flow-case-selector">
+                    <label class="flow-label">选择案例：</label>
+                    <select class="flow-case-select" id="flowCaseSelect">
+                        <option value="">-- 请选择案例 --</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 流程可视化区域 -->
+            <div class="flow-visualization">
+            <div class="flow-header">
+                <h3 class="flow-title" id="flowCaseTitle">请选择一个案例</h3>
+                <div class="flow-meta" id="flowCaseMeta"></div>
+            </div>
+
+            <div class="flow-translation-controls">
+                <label class="flow-translation-toggle">
+                    <input type="checkbox" id="translationToggle">
+                    <span>显示中文翻译</span>
+                </label>
+                <span class="flow-translation-description">使用词汇替换快速理解问题要点</span>
+            </div>
+            <div class="flow-translation-panel" id="flowTranslationPanel">
+                <p class="text-muted">请选择案例后显示中英文描述。</p>
+            </div>
+
+            <!-- 任务描述 -->
+            <div class="flow-task-panel" id="flowTaskPanel" style="display: none;">
+                    <div class="flow-task-header">
+                        <span class="flow-task-icon">📋</span>
+                        <h4 class="flow-task-title">任务描述</h4>
+                    </div>
+                    <div class="flow-task-content" id="flowTaskContent"></div>
+                </div>
+
+                <!-- Agent流程图 -->
+                <div class="flow-diagram-container" id="flowDiagramContainer">
+                    <div class="flow-empty">
+                        <div class="flow-empty-icon">🔄</div>
+                        <h3>选择案例开始可视化</h3>
+                        <p>从上方选择器中选择一个案例，查看完整的Agent执行流程</p>
+                    </div>
+                </div>
+
+                <!-- 错误分析面板 -->
+                <div class="flow-error-panel" id="flowErrorPanel" style="display: none;">
+                    <div class="flow-error-header">
+                        <span class="flow-error-icon">❌</span>
+                        <h4 class="flow-error-title">错误分析</h4>
+                    </div>
+                    <div class="flow-error-content">
+                        <div class="error-detail-row">
+                            <span class="error-detail-label">错误Agent：</span>
+                            <span class="error-detail-value" id="errorAgent"></span>
+                        </div>
+                        <div class="error-detail-row">
+                            <span class="error-detail-label">错误步骤：</span>
+                            <span class="error-detail-value" id="errorStep"></span>
+                        </div>
+                        <div class="error-detail-row">
+                            <span class="error-detail-label">错误原因：</span>
+                            <span class="error-detail-value" id="errorReason"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 正确答案 -->
+                <div class="flow-answer-panel" id="flowAnswerPanel" style="display: none;">
+                    <div class="flow-answer-header">
+                        <span class="flow-answer-icon">✅</span>
+                        <h4 class="flow-answer-title">正确答案</h4>
+                    </div>
+                    <div class="flow-answer-content" id="flowAnswerContent"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 案例面板 -->
+        <section id="cases" class="section">
+            <div class="section-header">
+                <h1 class="section-title">案例详情</h1>
+                <p class="section-subtitle">查看单个案例的完整对话流程和错误分析</p>
+            </div>
+
+            <!-- 案例列表 -->
+            <div class="cases-container">
+                <div class="cases-list">
+                    <div class="cases-list-header">
+                        <h3 class="list-title">案例列表</h3>
+                        <div class="list-controls">
+                            <input type="text" class="search-input" placeholder="搜索案例..." id="caseSearch">
+                            <select class="page-select" id="pageSize">
+                                <option value="20">20条/页</option>
+                                <option value="50">50条/页</option>
+                                <option value="100">100条/页</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="cases-table">
+                        <div class="table-header">
+                            <div class="table-cell">ID</div>
+                            <div class="table-cell">数据集</div>
+                            <div class="table-cell">等级</div>
+                            <div class="table-cell">错误Agent</div>
+                            <div class="table-cell">错误步骤</div>
+                            <div class="table-cell">操作</div>
+                        </div>
+                        <div class="table-body" id="casesTableBody">
+                            <!-- 动态生成案例列表 -->
+                        </div>
+                    </div>
+                    <div class="pagination" id="pagination">
+                        <!-- 动态生成分页 -->
+                    </div>
+                </div>
+
+                <!-- 案例详情 -->
+                <div class="case-detail" id="caseDetail">
+                    <div class="case-detail-empty">
+                        <div class="empty-icon">📋</div>
+                        <h3>选择一个案例查看详情</h3>
+                        <p>点击左侧列表中的任意案例，查看完整的对话流程和错误分析</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 模态框 - 对话流程 -->
+    <div class="modal" id="conversationModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">对话流程</h3>
+                <button class="modal-close" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="conversationFlow" class="conversation-flow">
+                    <!-- 动态生成对话流程 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
