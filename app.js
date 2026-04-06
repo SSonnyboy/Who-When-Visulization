@@ -36,6 +36,7 @@ const levelLabelMap = {
 };
 let showChineseTranslation = false;
 let currentFlowItem = null;
+let currentFlowLinkKey = null;
 
 // ==================== 数据加载 ====================
 async function loadData() {
@@ -175,123 +176,438 @@ function populateFlowCaseSelector() {
     });
 }
 
-function renderFlowVisualization(caseId) {
+function getFlowActorName(step = {}) {
+    return step.name || step.agent || step.role || 'Unknown';
+}
+
+function getFlowActorRole(step = {}) {
+    return step.role || 'Agent';
+}
+
+function getFlowMessage(step = {}) {
+    return step.content || step.message || '无内容';
+}
+
+function formatFlowStepLabel(step = {}, index = 0) {
+    if (step.step !== undefined && step.step !== null && String(step.step).trim() !== '') {
+        const raw = String(step.step).trim();
+        return /^step\s+/i.test(raw) ? raw : `Step ${raw}`;
+    }
+    return `Step ${index}`;
+}
+
+function summarizeFlowText(text, maxLength = 34) {
+    const compact = (text || '无内容').replace(/\s+/g, ' ').trim();
+    if (compact.length <= maxLength) {
+        return compact;
+    }
+    return `${compact.slice(0, maxLength)}…`;
+}
+
+function escapeHtml(value = '') {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getTranslatedFlowMessage(item, index, fallbackText) {
+    const translated = Array.isArray(item.history_cn) ? item.history_cn[index] : '';
+    if (translated) {
+        return translated;
+    }
+    return getChineseTranslation(fallbackText || '');
+}
+
+function buildFlowNetwork(item) {
+    const history = Array.isArray(item.history) ? item.history : [];
+    const parsedStep = parseInt(item.mistake_step, 10);
+    const errorIndex = Number.isFinite(parsedStep) ? parsedStep : -1;
+    const nodeMap = new Map();
+    const linkMap = new Map();
+
+    history.forEach((step, index) => {
+        const id = getFlowActorName(step);
+        if (!nodeMap.has(id)) {
+            nodeMap.set(id, {
+                id,
+                label: id,
+                roles: new Set(),
+                firstIndex: index,
+                occurrences: 0,
+                incoming: 0,
+                outgoing: 0,
+                isError: false
+            });
+        }
+
+        const node = nodeMap.get(id);
+        node.roles.add(getFlowActorRole(step));
+        node.occurrences += 1;
+        if (errorIndex === index || item.mistake_agent === id) {
+            node.isError = true;
+        }
+    });
+
+    for (let index = 0; index < history.length - 1; index += 1) {
+        const current = history[index];
+        const next = history[index + 1];
+        const source = getFlowActorName(current);
+        const target = getFlowActorName(next);
+        const key = `${source}__${target}`;
+
+        if (!linkMap.has(key)) {
+            linkMap.set(key, {
+                key,
+                source,
+                target,
+                transfers: [],
+                isError: false
+            });
+        }
+
+        const currentText = getFlowMessage(current);
+        const nextText = getFlowMessage(next);
+        const transfer = {
+            key: `${key}__${index}`,
+            stepIndex: index,
+            nextStepIndex: index + 1,
+            stepLabel: formatFlowStepLabel(current, index),
+            nextStepLabel: formatFlowStepLabel(next, index + 1),
+            source,
+            target,
+            sourceRole: getFlowActorRole(current),
+            targetRole: getFlowActorRole(next),
+            handoffText: currentText,
+            handoffTextCN: getTranslatedFlowMessage(item, index, currentText),
+            responseText: nextText,
+            responseTextCN: getTranslatedFlowMessage(item, index + 1, nextText),
+            summary: summarizeFlowText(currentText),
+            isError: errorIndex === index
+        };
+
+        const link = linkMap.get(key);
+        link.transfers.push(transfer);
+        link.isError = link.isError || transfer.isError;
+        nodeMap.get(source).outgoing += 1;
+        nodeMap.get(target).incoming += 1;
+    }
+
+    const nodes = [...nodeMap.values()]
+        .sort((a, b) => a.firstIndex - b.firstIndex)
+        .map(node => ({
+            ...node,
+            roles: [...node.roles]
+        }));
+
+    const links = [...linkMap.values()];
+
+    return {
+        nodes,
+        links,
+        errorIndex
+    };
+}
+
+function resolveSelectedFlowLink(flowData, preferredKey) {
+    if (preferredKey && flowData.links.some(link => link.key === preferredKey)) {
+        return preferredKey;
+    }
+    const errorLink = flowData.links.find(link => link.isError);
+    return errorLink?.key || flowData.links[0]?.key || null;
+}
+
+function buildFlowLayout(flowData) {
+    const nodeWidth = 190;
+    const nodeHeight = 114;
+    const laneWidth = 220;
+    const paddingX = 70;
+    const nodeTop = 208;
+    const height = 360;
+    const width = Math.max(720, paddingX * 2 + Math.max(flowData.nodes.length - 1, 0) * laneWidth + nodeWidth);
+    const positions = {};
+
+    flowData.nodes.forEach((node, index) => {
+        const left = paddingX + index * laneWidth;
+        positions[node.id] = {
+            left,
+            top: nodeTop,
+            centerX: left + nodeWidth / 2,
+            centerY: nodeTop + nodeHeight / 2,
+            index
+        };
+    });
+
+    const edges = flowData.links.map((link, index) => {
+        const sourcePos = positions[link.source];
+        const targetPos = positions[link.target];
+
+        if (!sourcePos || !targetPos) {
+            return null;
+        }
+
+        if (link.source === link.target) {
+            const cx = sourcePos.centerX;
+            const startX = cx + 34;
+            const endX = cx - 34;
+            const startY = sourcePos.top + 14;
+            const endY = sourcePos.top + 14;
+            const controlY = Math.max(24, sourcePos.top - 92);
+            return {
+                key: link.key,
+                path: `M ${startX} ${startY} C ${cx + 92} ${controlY}, ${cx - 92} ${controlY}, ${endX} ${endY}`,
+                labelLeft: cx - 34,
+                labelTop: controlY + 8
+            };
+        }
+
+        const startX = sourcePos.centerX;
+        const endX = targetPos.centerX;
+        const startY = sourcePos.top + 8;
+        const endY = targetPos.top + 8;
+        const distance = Math.abs(targetPos.index - sourcePos.index);
+        const arcHeight = 80 + distance * 28 + (index % 3) * 12;
+        const controlY = Math.max(26, nodeTop - arcHeight);
+
+        return {
+            key: link.key,
+            path: `M ${startX} ${startY} Q ${(startX + endX) / 2} ${controlY} ${endX} ${endY}`,
+            labelLeft: (startX + endX) / 2 - 34,
+            labelTop: controlY + 8
+        };
+    }).filter(Boolean);
+
+    return {
+        width,
+        height,
+        nodeWidth,
+        nodeHeight,
+        positions,
+        edges
+    };
+}
+
+function renderFlowGraph(flowData, selectedLinkKey) {
+    if (!flowData.nodes.length) {
+        return '<div class="flow-graph-empty">暂无流程数据</div>';
+    }
+
+    const layout = buildFlowLayout(flowData);
+    const edgeMap = new Map(layout.edges.map(edge => [edge.key, edge]));
+
+    const svgPaths = flowData.links.map(link => {
+        const edge = edgeMap.get(link.key);
+        if (!edge) return '';
+        const stateClass = [
+            'flow-network-edge',
+            link.isError ? 'error' : '',
+            link.key === selectedLinkKey ? 'active' : ''
+        ].filter(Boolean).join(' ');
+        return `
+            <path class="flow-network-edge-hitbox" d="${edge.path}" fill="none" data-flow-link-key="${link.key}"></path>
+            <path class="${stateClass}" d="${edge.path}" fill="none" data-flow-link-key="${link.key}"></path>
+        `;
+    }).join('');
+
+    const labels = flowData.links.map(link => {
+        const edge = edgeMap.get(link.key);
+        if (!edge) return '';
+        const labelClass = [
+            'flow-network-link-label',
+            link.isError ? 'error' : '',
+            link.key === selectedLinkKey ? 'active' : ''
+        ].filter(Boolean).join(' ');
+        return `
+            <button
+                type="button"
+                class="${labelClass}"
+                data-flow-link-key="${link.key}"
+                style="left: ${edge.labelLeft}px; top: ${edge.labelTop}px;"
+                title="${escapeHtml(`${link.source} -> ${link.target}`)}"
+            >
+                ${link.transfers.length}次
+            </button>
+        `;
+    }).join('');
+
+    const nodes = flowData.nodes.map(node => {
+        const position = layout.positions[node.id];
+        const roles = node.roles.join(' / ');
+        const nodeClass = [
+            'flow-network-node',
+            node.isError ? 'error' : ''
+        ].filter(Boolean).join(' ');
+        return `
+            <article
+                class="${nodeClass}"
+                style="left: ${position.left}px; top: ${position.top}px; width: ${layout.nodeWidth}px; min-height: ${layout.nodeHeight}px;"
+            >
+                <div class="flow-network-node-topline">
+                    <span class="flow-network-node-count">${node.occurrences}次发言</span>
+                    ${node.isError ? '<span class="flow-network-node-error">错误链</span>' : ''}
+                </div>
+                <h4 class="flow-network-node-name">${escapeHtml(node.label)}</h4>
+                <div class="flow-network-node-role">${escapeHtml(roles || 'Agent')}</div>
+                <div class="flow-network-node-metrics">
+                    <span>出 ${node.outgoing}</span>
+                    <span>入 ${node.incoming}</span>
+                </div>
+            </article>
+        `;
+    }).join('');
+
+    return `
+        <div class="flow-network-board">
+            <div class="flow-network-guide">节点是 Agent，连线表示相邻步骤中的信息交付。点击连线查看该链路的输入内容。</div>
+            <div class="flow-network-scroll">
+                <div class="flow-network-canvas" style="width: ${layout.width}px; height: ${layout.height}px;">
+                    <svg class="flow-network-svg" viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="none">
+                        ${svgPaths}
+                    </svg>
+                    <div class="flow-network-label-layer">
+                        ${labels}
+                    </div>
+                    <div class="flow-network-node-layer">
+                        ${nodes}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderFlowRoster(flowData) {
+    return `
+        <div class="flow-agent-roster">
+            ${flowData.nodes.map(node => `
+                <div class="flow-agent-chip ${node.isError ? 'error' : ''}">
+                    <span class="flow-agent-chip-name">${escapeHtml(node.label)}</span>
+                    <span class="flow-agent-chip-meta">${node.roles.map(role => escapeHtml(role)).join(' / ')}</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderFlowLinkDetail(flowData, selectedLinkKey) {
+    if (!flowData.links.length) {
+        return `
+            <div class="flow-link-detail-empty">
+                <div class="flow-link-detail-title">暂无交付链路</div>
+                <p>当前案例只有单步信息或缺少相邻 Agent 交付。</p>
+            </div>
+        `;
+    }
+
+    const link = flowData.links.find(item => item.key === selectedLinkKey) || flowData.links[0];
+    if (!link) {
+        return '';
+    }
+
+    const transferCards = link.transfers.map(transfer => {
+        const handoffText = showChineseTranslation ? transfer.handoffTextCN : transfer.handoffText;
+        const responseText = showChineseTranslation ? transfer.responseTextCN : transfer.responseText;
+
+        return `
+            <article class="flow-transfer-card ${transfer.isError ? 'error' : ''}">
+                <div class="flow-transfer-card-header">
+                    <div>
+                        <div class="flow-transfer-route">${escapeHtml(`${transfer.source} -> ${transfer.target}`)}</div>
+                        <div class="flow-transfer-step">${escapeHtml(`${transfer.stepLabel} -> ${transfer.nextStepLabel}`)}</div>
+                    </div>
+                    ${transfer.isError ? '<span class="flow-transfer-badge">错误交付</span>' : ''}
+                </div>
+                <div class="flow-transfer-summary">${escapeHtml(transfer.summary)}</div>
+                <div class="flow-transfer-block">
+                    <div class="flow-transfer-label">交付内容</div>
+                    <pre>${escapeHtml(handoffText || '无可展示内容')}</pre>
+                </div>
+                <div class="flow-transfer-block secondary">
+                    <div class="flow-transfer-label">接收方下一步响应</div>
+                    <pre>${escapeHtml(responseText || '无可展示内容')}</pre>
+                </div>
+            </article>
+        `;
+    }).join('');
+
+    return `
+        <div class="flow-link-detail-panel">
+            <div class="flow-link-detail-header">
+                <div>
+                    <div class="flow-link-detail-kicker">当前选中链路</div>
+                    <h4 class="flow-link-detail-title">${escapeHtml(`${link.source} -> ${link.target}`)}</h4>
+                </div>
+                <div class="flow-link-detail-meta">
+                    <span>${link.transfers.length} 次交付</span>
+                    ${link.isError ? '<span class="flow-link-detail-error">包含错误步骤</span>' : '<span>链路正常</span>'}
+                </div>
+            </div>
+            <div class="flow-transfer-list">
+                ${transferCards}
+            </div>
+        </div>
+    `;
+}
+
+function bindFlowGraphEvents(container, caseId) {
+    container.querySelectorAll('[data-flow-link-key]').forEach(element => {
+        element.addEventListener('click', () => {
+            const { flowLinkKey } = element.dataset;
+            renderFlowVisualization(caseId, flowLinkKey);
+        });
+    });
+}
+
+function renderFlowVisualization(caseId, preferredLinkKey = null) {
     const item = allData.find(d => d.id === caseId);
     if (!item) return;
-    
-    // 更新标题
+
+    const flowData = buildFlowNetwork(item);
+    const selectedLinkKey = resolveSelectedFlowLink(flowData, preferredLinkKey);
+    currentFlowItem = item;
+    currentFlowLinkKey = selectedLinkKey;
+
     document.getElementById('flowCaseTitle').textContent = `案例 ${item.id}`;
-    
-    // 更新元数据
-    const metaHtml = `
+    document.getElementById('flowCaseMeta').innerHTML = `
         <span class="flow-badge dataset-badge ${item.dataset}">${item.dataset === 'algorithm' ? '算法生成' : '手工标注'}</span>
         <span class="flow-badge level-badge ${item.levelClass}">${item.levelLabel}</span>
-        <span class="flow-badge">错误: ${item.mistake_agent}</span>
+        <span class="flow-badge">错误: ${escapeHtml(item.mistake_agent)}</span>
+        <span class="flow-badge">Agent节点: ${flowData.nodes.length}</span>
+        <span class="flow-badge">交付链: ${flowData.links.length}</span>
     `;
-    document.getElementById('flowCaseMeta').innerHTML = metaHtml;
-    
-    // 显示任务描述
+
     const taskPanel = document.getElementById('flowTaskPanel');
     const taskContent = document.getElementById('flowTaskContent');
     taskPanel.style.display = 'block';
     taskContent.textContent = item.question || '无任务描述';
-    
-    currentFlowItem = item;
+
     renderFlowTranslation(item);
 
-    // 渲染Agent流程
     const container = document.getElementById('flowDiagramContainer');
     if (item.history && item.history.length > 0) {
-        const parsedStep = parseInt(item.mistake_step, 10);
-        const errorIndex = Number.isFinite(parsedStep) ? parsedStep : -1;
         container.innerHTML = `
-            <div class="flow-graph-wrapper">
-                ${renderFlowGraph(item.history, errorIndex)}
-            </div>
-            <div class="flow-step-list">
-                ${renderAgentFlow(item.history, errorIndex)}
+            ${renderFlowRoster(flowData)}
+            <div class="flow-network-layout">
+                ${renderFlowGraph(flowData, selectedLinkKey)}
+                ${renderFlowLinkDetail(flowData, selectedLinkKey)}
             </div>
         `;
+        bindFlowGraphEvents(container, caseId);
     } else {
         container.innerHTML = '<div class="text-center text-muted">此案例没有对话历史</div>';
     }
-    
-    // 显示错误分析
+
     const errorPanel = document.getElementById('flowErrorPanel');
     errorPanel.style.display = 'block';
     document.getElementById('errorAgent').textContent = item.mistake_agent || 'Unknown';
     document.getElementById('errorStep').textContent = `Step ${item.mistake_step || '0'}`;
     document.getElementById('errorReason').textContent = item.mistake_reason || '无错误原因描述';
-    
-    // 显示正确答案
+
     const answerPanel = document.getElementById('flowAnswerPanel');
     answerPanel.style.display = 'block';
     document.getElementById('flowAnswerContent').textContent = item.ground_truth || item.groundtruth || '无正确答案';
-}
-
-function renderAgentFlow(history, errorStep) {
-    let html = '<div class="agent-flow">';
-    
-    history.forEach((step, index) => {
-        const isError = errorStep === index;
-        const agent = step.name || step.role || 'Unknown';
-        const role = step.role || 'Agent';
-        const message = step.content || step.message || '无内容';
-        
-        html += `
-            <div class="flow-step ${isError ? 'error' : ''}">
-                <div class="step-connector">
-                    <div class="step-number ${isError ? 'error' : ''}">${index}</div>
-                    ${index < history.length - 1 ? '<div class="step-arrow">↓</div>' : ''}
-                </div>
-                <div class="step-content">
-                    <div class="step-header">
-                        <span class="step-agent">${agent}</span>
-                        <span class="step-role">${role}</span>
-                        ${isError ? '<span class="step-error-badge">❌ 错误步骤</span>' : ''}
-                    </div>
-                    <div class="step-message ${isError ? 'error' : ''}">
-                        ${message.substring(0, 500)}${message.length > 500 ? '...' : ''}
-                    </div>
-                </div>
-            </div>
-        `;
-    });
-    
-    html += '</div>';
-    return html;
-}
-
-function renderFlowGraph(history, errorStep) {
-    if (!history || history.length === 0) {
-        return '<div class="flow-graph-empty">暂无流程数据</div>';
-    }
-
-    let html = '<div class="flow-graph-track">';
-    history.forEach((step, index) => {
-        const isError = errorStep === index;
-        const agent = step.name || step.role || 'Unknown';
-        const shortMessage = (step.content || step.message || '').replace(/\s+/g, ' ').trim();
-        const truncated = shortMessage.length > 70 ? `${shortMessage.slice(0, 70)}…` : shortMessage;
-        const displayStep = step.step || `Step ${index}`;
-
-        html += `
-            <div class="flow-graph-node ${isError ? 'error' : ''}">
-                <span class="flow-graph-index">${index + 1}</span>
-                <div class="flow-graph-agent">${agent}</div>
-                <div class="flow-graph-role">${step.role || 'Agent'}</div>
-                <div class="flow-graph-step">${displayStep}</div>
-                <p class="flow-graph-message">${truncated || '无对话内容'}</p>
-            </div>
-        `;
-
-        if (index < history.length - 1) {
-            const connectorClass = index < errorStep ? 'visited' : '';
-            html += `<div class="flow-graph-connector ${connectorClass} ${isError ? 'error' : ''}"></div>`;
-        }
-    });
-    html += '</div>';
-    return html;
 }
 
 function renderFlowTranslation(item) {
@@ -312,34 +628,34 @@ function renderFlowTranslation(item) {
     panel.innerHTML = `
         <div class="translation-row">
             <div class="translation-label">原始问题</div>
-            <p>${question}</p>
+            <p>${escapeHtml(question)}</p>
         </div>
         <div class="translation-row translation-cn ${showChineseTranslation ? 'visible' : 'hidden'}">
             <div class="translation-label">中文翻译</div>
-            <p>${translated}</p>
+            <p>${escapeHtml(translated)}</p>
         </div>
         ${ground ? `
             <div class="translation-row">
                 <div class="translation-label">正确答案</div>
-                <p>${ground}</p>
+                <p>${escapeHtml(ground)}</p>
             </div>
         ` : ''}
         ${groundCN && showChineseTranslation ? `
             <div class="translation-row translation-cn">
                 <div class="translation-label">答案翻译</div>
-                <p>${groundCN}</p>
+                <p>${escapeHtml(groundCN)}</p>
             </div>
         ` : ''}
         ${mistakeReason ? `
             <div class="translation-row">
                 <div class="translation-label">错误原因</div>
-                <p>${mistakeReason}</p>
+                <p>${escapeHtml(mistakeReason)}</p>
             </div>
         ` : ''}
         ${reasonCN && showChineseTranslation ? `
             <div class="translation-row translation-cn">
                 <div class="translation-label">原因翻译</div>
-                <p>${reasonCN}</p>
+                <p>${escapeHtml(reasonCN)}</p>
             </div>
         ` : ''}
         <div class="translation-note">${showChineseTranslation ? '自动翻译结果仅供参考，可能不够精准。' : '勾选“显示中文翻译”以展开自动翻译。'}</div>
@@ -1028,6 +1344,7 @@ function setupEventListeners() {
             document.getElementById('flowErrorPanel').style.display = 'none';
             document.getElementById('flowAnswerPanel').style.display = 'none';
             currentFlowItem = null;
+            currentFlowLinkKey = null;
             renderFlowTranslation(null);
         }
     });
@@ -1037,6 +1354,9 @@ function setupEventListeners() {
         translationToggle.addEventListener('change', (e) => {
             showChineseTranslation = e.target.checked;
             renderFlowTranslation(currentFlowItem);
+            if (currentFlowItem) {
+                renderFlowVisualization(currentFlowItem.id, currentFlowLinkKey);
+            }
         });
     }
     
