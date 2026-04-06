@@ -1,0 +1,10 @@
+.git/
+.gitignore
+.assetsignore
+README.md
+START.md
+pyproject.toml
+wrangler.toml
+src/
+scripts/
+translation-cache.json

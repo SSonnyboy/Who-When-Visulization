@@ -103,6 +103,63 @@
 
 2. 使用本地服务器打开 `index.html`
 
+### 方法三：部署到 Cloudflare Python Worker（新增）
+
+当前仓库已增加一套可直接部署的 Cloudflare Python Worker 后端：
+
+- `wrangler.toml`：Worker 配置文件
+- `src/entry.py`：Python Worker 入口
+- `.assetsignore`：避免把源码和脚本作为静态资源上传
+- `pyproject.toml`：Python Worker 本地开发依赖定义
+
+#### 路由说明
+
+- 目标访问地址：`https://vis.102465.xyz/who&when`
+- Wrangler 中实际配置为：`vis.102465.xyz/who&when*`
+- 这里使用的是 **Route**，不是 `custom_domain = true`
+
+原因是 Cloudflare 的 Custom Domain 只能绑定整个域名或子域名，而你这里要求的是子路径 `/who&when`，因此必须使用 Route。
+
+Worker 会自动将 `https://vis.102465.xyz/who&when` 307 重定向到 `https://vis.102465.xyz/who&when/`，这样现有的 `index.html`、`app.js`、`styles.css` 和 `all-data-cn.json` 相对路径都能正常解析。
+
+#### 部署前准备
+
+1. 确保 Cloudflare 中已接入 `102465.xyz` 区域
+2. 确保 `vis.102465.xyz` 有对应 DNS 记录，并且是 Cloudflare 代理状态（橙云）
+3. 安装 Python Worker 开发依赖：
+
+   ```bash
+   uv sync --group dev
+   ```
+
+#### 本地开发
+
+```bash
+uv run pywrangler dev
+```
+
+本地启动后，访问：
+
+- `http://127.0.0.1:8787/who&when/`
+
+#### 部署命令
+
+```bash
+uv run pywrangler deploy
+```
+
+#### 后端 API
+
+- `GET /who&when/api/health`：健康检查
+- `GET /who&when/api/summary?lang=cn`：返回数据集摘要
+- `GET /who&when/api/cases?lang=cn&dataset=all&limit=20&offset=0&search=`：分页案例列表
+- `GET /who&when/api/cases/A1?lang=cn`：单案例详情
+
+其中 `lang` 支持：
+
+- `cn`：读取 `all-data-cn.json`
+- `en`：读取 `all-data.json`
+
 ## 数据结构
 
 每个数据案例包含以下字段：
@@ -229,13 +286,19 @@
 ## 项目结构
 
 ```
-dashboard/
+Who-When-Visulization/
 ├── index.html          # 主页面
 ├── styles.css          # 样式文件
-├── app.js             # 应用逻辑
-├── data-loader.js     # 数据加载器（Node.js）
-├── all-data.json      # 合并的数据文件（生成后）
-└── README.md          # 本文档
+├── app.js              # 应用逻辑
+├── data-loader.js      # 数据加载器（Node.js）
+├── all-data.json       # 英文合并数据
+├── all-data-cn.json    # 中文合并数据
+├── wrangler.toml       # Cloudflare Worker 配置
+├── pyproject.toml      # Python Worker 依赖定义
+├── .assetsignore       # 静态资源忽略规则
+├── src/
+│   └── entry.py        # Python Worker 后端入口
+└── README.md           # 本文档
 ```
 
 ## 贡献
