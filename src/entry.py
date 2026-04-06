@@ -49,6 +49,17 @@ def parse_int(value, default, minimum=0, maximum=None):
     return parsed
 
 
+def normalize_base_path(value):
+    raw = (value or "/").strip()
+    if raw in ("", "/"):
+        return ""
+    return "/" + raw.strip("/")
+
+
+def resolve_base_path(env):
+    return normalize_base_path(getattr(env, "BASE_PATH", "/"))
+
+
 def build_case_preview(item, lang):
     if lang == "cn":
         question = item.get("question_cn") or item.get("question") or ""
@@ -68,21 +79,24 @@ def build_case_preview(item, lang):
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        base_path = getattr(self.env, "BASE_PATH", "/who&when").rstrip("/")
         parsed_url = urlparse(request.url)
         path = parsed_url.path or "/"
+        base_path = resolve_base_path(self.env)
         suffix = f"?{parsed_url.query}" if parsed_url.query else ""
 
-        if path == "/":
-            return self.redirect_to_base(base_path, suffix)
+        if base_path:
+            if path == "/":
+                return self.redirect_to_base(base_path, suffix)
 
-        if path == base_path:
-            return text_response("", status=307, headers={"Location": f"{base_path}/{suffix}"})
+            if path == base_path:
+                return text_response("", status=307, headers={"Location": f"{base_path}/{suffix}"})
 
-        if not path.startswith(f"{base_path}/"):
-            return text_response("Not Found", status=404)
+            if not path.startswith(f"{base_path}/"):
+                return text_response("Not Found", status=404)
 
-        relative_path = path[len(base_path) :] or "/"
+            relative_path = path[len(base_path) :] or "/"
+        else:
+            relative_path = path or "/"
 
         if relative_path.startswith("/api/"):
             return await self.handle_api(relative_path, parsed_url.query, base_path)
@@ -100,8 +114,8 @@ class Default(WorkerEntrypoint):
                 {
                     "status": "ok",
                     "service": "who-when-python-worker",
-                    "base_path": base_path,
-                    "route_pattern": "vis.102465.xyz/who&when*",
+                    "base_path": base_path or "/",
+                    "route_patterns": ["vis.102465.xyz/who_when*"],
                 }
             )
 

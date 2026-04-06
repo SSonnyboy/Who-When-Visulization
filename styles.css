@@ -1216,13 +1216,21 @@ body::before {
 }
 
 .flow-agent-chip-name {
+    display: block;
     font-weight: 600;
     color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .flow-agent-chip-meta {
+    display: block;
     font-size: 0.82rem;
     color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .flow-network-layout {
@@ -1232,30 +1240,29 @@ body::before {
     align-items: start;
 }
 
-.flow-network-board {
+.flow-sequence-board {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
 }
 
-.flow-network-guide {
+.flow-sequence-guide {
     color: var(--text-secondary);
     font-size: 0.9rem;
     line-height: 1.6;
 }
 
-.flow-network-scroll {
+.flow-sequence-scroll {
     overflow-x: auto;
     overflow-y: hidden;
     padding-bottom: var(--spacing-sm);
 }
 
-.flow-network-canvas {
+.flow-sequence-canvas {
     position: relative;
-    min-height: 360px;
 }
 
-.flow-network-svg {
+.flow-sequence-svg {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -1263,136 +1270,214 @@ body::before {
     overflow: visible;
 }
 
-.flow-network-edge {
-    stroke: rgba(120, 168, 255, 0.35);
-    stroke-width: 4;
+.flow-sequence-lane-line {
+    stroke: rgba(125, 211, 252, 0.14);
+    stroke-width: 2;
+    stroke-dasharray: 6 10;
+}
+
+.flow-sequence-row-line {
+    stroke: rgba(255, 255, 255, 0.06);
+    stroke-width: 1;
+}
+
+.flow-sequence-transfer-line {
+    stroke: rgba(120, 168, 255, 0.5);
+    stroke-width: 5;
     stroke-linecap: round;
     cursor: pointer;
     transition: stroke var(--transition-fast), stroke-width var(--transition-fast), opacity var(--transition-fast);
-    opacity: 0.9;
 }
 
-.flow-network-edge-hitbox {
-    stroke: transparent;
-    stroke-width: 16;
-    cursor: pointer;
+.flow-sequence-transfer-line:hover {
+    stroke: rgba(125, 211, 252, 0.9);
+    stroke-width: 6;
 }
 
-.flow-network-edge:hover {
-    stroke: rgba(120, 168, 255, 0.7);
-    stroke-width: 5;
-}
-
-.flow-network-edge.active {
+.flow-sequence-transfer-line.active {
     stroke: #7dd3fc;
-    stroke-width: 5;
+    stroke-width: 6;
 }
 
-.flow-network-edge.error {
+.flow-sequence-transfer-line.error {
     stroke: rgba(245, 87, 108, 0.7);
 }
 
-.flow-network-edge.error.active {
+.flow-sequence-transfer-line.error.active {
     stroke: #ff7a90;
 }
 
-.flow-network-label-layer {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
+.flow-sequence-transfer-hitbox {
+    stroke: transparent;
+    stroke-width: 18;
+    cursor: pointer;
 }
 
-.flow-network-link-label {
+.flow-sequence-transfer-arrow {
+    fill: rgba(120, 168, 255, 0.82);
+    cursor: pointer;
+    transition: fill var(--transition-fast), transform var(--transition-fast);
+}
+
+.flow-sequence-transfer-arrow.error {
+    fill: rgba(245, 87, 108, 0.9);
+}
+
+.flow-sequence-transfer-arrow.active {
+    fill: #e0f2fe;
+}
+
+.flow-sequence-order-badge {
     position: absolute;
-    pointer-events: auto;
-    min-width: 68px;
-    padding: 6px 10px;
+    width: 42px;
+    height: 42px;
     border-radius: 999px;
-    border: 1px solid rgba(125, 211, 252, 0.28);
-    background: rgba(7, 16, 33, 0.9);
+    border: 1px solid rgba(125, 211, 252, 0.35);
+    background: rgba(7, 16, 33, 0.92);
     color: #d8f0ff;
-    font-size: 0.78rem;
-    font-weight: 700;
+    font-size: 0.9rem;
+    font-weight: 800;
     cursor: pointer;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.28);
     transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+    z-index: 3;
 }
 
-.flow-network-link-label:hover {
+.flow-sequence-order-badge:hover {
     transform: translateY(-2px);
-    border-color: rgba(125, 211, 252, 0.65);
 }
 
-.flow-network-link-label.active {
-    background: rgba(17, 69, 109, 0.92);
-    border-color: rgba(125, 211, 252, 0.9);
+.flow-sequence-order-badge.active {
+    background: rgba(17, 69, 109, 0.96);
+    border-color: rgba(125, 211, 252, 0.92);
 }
 
-.flow-network-link-label.error {
+.flow-sequence-order-badge.error {
     border-color: rgba(245, 87, 108, 0.45);
     color: #ffd7dd;
 }
 
-.flow-network-link-label.error.active {
-    background: rgba(104, 24, 42, 0.92);
-    border-color: rgba(245, 87, 108, 0.9);
+.flow-sequence-order-badge.error.active {
+    background: rgba(104, 24, 42, 0.96);
+    border-color: rgba(245, 87, 108, 0.92);
 }
 
-.flow-network-node-layer {
+.flow-sequence-transfer-label {
     position: absolute;
-    inset: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 112px;
+    max-width: 180px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(125, 211, 252, 0.24);
+    background: rgba(7, 16, 33, 0.9);
+    color: #d8f0ff;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.28);
+    cursor: pointer;
+    transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+    overflow: hidden;
+    z-index: 2;
 }
 
-.flow-network-node {
+.flow-sequence-transfer-label:hover {
+    transform: translateY(-2px);
+}
+
+.flow-sequence-transfer-label.active {
+    background: rgba(17, 69, 109, 0.94);
+    border-color: rgba(125, 211, 252, 0.92);
+}
+
+.flow-sequence-transfer-label.error {
+    border-color: rgba(245, 87, 108, 0.4);
+}
+
+.flow-sequence-transfer-label.error.active {
+    background: rgba(104, 24, 42, 0.94);
+    border-color: rgba(245, 87, 108, 0.92);
+}
+
+.flow-sequence-transfer-route {
+    display: block;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.flow-sequence-transfer-summary {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.flow-sequence-node {
     position: absolute;
     padding: 14px;
     border-radius: 18px;
     background: linear-gradient(160deg, rgba(13, 27, 56, 0.95), rgba(22, 52, 90, 0.82));
     border: 1px solid rgba(125, 211, 252, 0.18);
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.32);
+    overflow: hidden;
+    z-index: 2;
 }
 
-.flow-network-node.error {
+.flow-sequence-node.error {
     background: linear-gradient(160deg, rgba(83, 22, 33, 0.95), rgba(122, 36, 54, 0.82));
     border-color: rgba(245, 87, 108, 0.35);
 }
 
-.flow-network-node-topline {
+.flow-sequence-node-topline {
     display: flex;
     justify-content: space-between;
     gap: var(--spacing-sm);
     margin-bottom: var(--spacing-xs);
 }
 
-.flow-network-node-count {
+.flow-sequence-node-count {
     font-size: 0.75rem;
     color: var(--text-muted);
     letter-spacing: 0.06em;
     text-transform: uppercase;
 }
 
-.flow-network-node-error {
+.flow-sequence-node-error {
     font-size: 0.72rem;
     font-weight: 700;
     color: #ffd7dd;
 }
 
-.flow-network-node-name {
+.flow-sequence-node-name {
+    display: block;
     font-size: 1.05rem;
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.35;
     margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.flow-network-node-role {
+.flow-sequence-node-role {
+    display: block;
     font-size: 0.82rem;
     color: var(--text-secondary);
     line-height: 1.45;
     margin-bottom: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.flow-network-node-metrics {
+.flow-sequence-node-metrics {
     display: flex;
     gap: var(--spacing-sm);
     color: #b7d7ff;
@@ -1501,6 +1586,11 @@ body::before {
     color: #ffd7dd;
     font-size: 0.75rem;
     font-weight: 700;
+}
+
+.flow-transfer-badge.neutral {
+    background: rgba(125, 211, 252, 0.14);
+    color: #d8f0ff;
 }
 
 .flow-transfer-summary {
@@ -2206,10 +2296,16 @@ body::before {
         align-items: flex-start;
     }
 
-    .flow-network-link-label {
-        min-width: 56px;
-        font-size: 0.72rem;
-        padding: 5px 8px;
+    .flow-sequence-transfer-label {
+        max-width: 140px;
+        min-width: 88px;
+        padding: 6px 8px;
+    }
+
+    .flow-sequence-order-badge {
+        width: 36px;
+        height: 36px;
+        font-size: 0.78rem;
     }
 }
 

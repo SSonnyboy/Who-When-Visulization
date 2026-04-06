@@ -8,3 +8,7 @@ wrangler.toml
 src/
 scripts/
 translation-cache.json
+.wrangler/
+.venv/
+.venv-workers/
+__pycache__/

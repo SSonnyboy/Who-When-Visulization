@@ -36,7 +36,7 @@ const levelLabelMap = {
 };
 let showChineseTranslation = false;
 let currentFlowItem = null;
-let currentFlowLinkKey = null;
+let currentFlowTransferKey = null;
 
 // ==================== 数据加载 ====================
 async function loadData() {
@@ -227,6 +227,7 @@ function buildFlowNetwork(item) {
     const errorIndex = Number.isFinite(parsedStep) ? parsedStep : -1;
     const nodeMap = new Map();
     const linkMap = new Map();
+    const transfers = [];
 
     history.forEach((step, index) => {
         const id = getFlowActorName(step);
@@ -272,6 +273,8 @@ function buildFlowNetwork(item) {
         const nextText = getFlowMessage(next);
         const transfer = {
             key: `${key}__${index}`,
+            order: transfers.length + 1,
+            linkKey: key,
             stepIndex: index,
             nextStepIndex: index + 1,
             stepLabel: formatFlowStepLabel(current, index),
@@ -288,6 +291,7 @@ function buildFlowNetwork(item) {
             isError: errorIndex === index
         };
 
+        transfers.push(transfer);
         const link = linkMap.get(key);
         link.transfers.push(transfer);
         link.isError = link.isError || transfer.isError;
@@ -307,128 +311,146 @@ function buildFlowNetwork(item) {
     return {
         nodes,
         links,
+        transfers,
         errorIndex
     };
 }
 
-function resolveSelectedFlowLink(flowData, preferredKey) {
-    if (preferredKey && flowData.links.some(link => link.key === preferredKey)) {
+function resolveSelectedFlowTransfer(flowData, preferredKey) {
+    if (preferredKey && flowData.transfers.some(transfer => transfer.key === preferredKey)) {
         return preferredKey;
     }
-    const errorLink = flowData.links.find(link => link.isError);
-    return errorLink?.key || flowData.links[0]?.key || null;
+    const errorTransfer = flowData.transfers.find(transfer => transfer.isError);
+    return errorTransfer?.key || flowData.transfers[0]?.key || null;
 }
 
 function buildFlowLayout(flowData) {
-    const nodeWidth = 190;
-    const nodeHeight = 114;
-    const laneWidth = 220;
-    const paddingX = 70;
-    const nodeTop = 208;
-    const height = 360;
-    const width = Math.max(720, paddingX * 2 + Math.max(flowData.nodes.length - 1, 0) * laneWidth + nodeWidth);
+    const labelColumnWidth = 86;
+    const paddingX = 40;
+    const headerTop = 28;
+    const headerHeight = 104;
+    const rowHeight = 92;
+    const columnWidth = 190;
+    const columnGap = 38;
+    const laneTop = headerTop + headerHeight + 48;
+    const minimumWidth = 780;
     const positions = {};
+    const centerY = laneTop + rowHeight / 2;
+    const contentWidth = flowData.nodes.length * columnWidth + Math.max(flowData.nodes.length - 1, 0) * columnGap;
+    const width = Math.max(minimumWidth, labelColumnWidth + paddingX * 2 + contentWidth);
+    const height = Math.max(360, laneTop + flowData.transfers.length * rowHeight + 36);
 
     flowData.nodes.forEach((node, index) => {
-        const left = paddingX + index * laneWidth;
+        const left = labelColumnWidth + paddingX + index * (columnWidth + columnGap);
         positions[node.id] = {
+            index,
             left,
-            top: nodeTop,
-            centerX: left + nodeWidth / 2,
-            centerY: nodeTop + nodeHeight / 2,
-            index
+            top: headerTop,
+            centerX: left + columnWidth / 2
         };
     });
 
-    const edges = flowData.links.map((link, index) => {
-        const sourcePos = positions[link.source];
-        const targetPos = positions[link.target];
+    const rows = flowData.transfers.map(transfer => {
+        const sourcePos = positions[transfer.source];
+        const targetPos = positions[transfer.target];
+        const rowTop = laneTop + transfer.order * rowHeight - rowHeight;
+        const rowCenter = rowTop + rowHeight / 2;
 
         if (!sourcePos || !targetPos) {
             return null;
         }
 
-        if (link.source === link.target) {
+        if (transfer.source === transfer.target) {
             const cx = sourcePos.centerX;
-            const startX = cx + 34;
-            const endX = cx - 34;
-            const startY = sourcePos.top + 14;
-            const endY = sourcePos.top + 14;
-            const controlY = Math.max(24, sourcePos.top - 92);
             return {
-                key: link.key,
-                path: `M ${startX} ${startY} C ${cx + 92} ${controlY}, ${cx - 92} ${controlY}, ${endX} ${endY}`,
-                labelLeft: cx - 34,
-                labelTop: controlY + 8
+                key: transfer.key,
+                rowTop,
+                rowCenter,
+                path: `M ${cx + 26} ${rowCenter} C ${cx + 92} ${rowCenter - 34}, ${cx - 92} ${rowCenter - 34}, ${cx - 26} ${rowCenter}`,
+                markerX: cx - 26,
+                markerY: rowCenter,
+                labelLeft: cx + 48,
+                labelTop: rowTop + 16
             };
         }
 
         const startX = sourcePos.centerX;
         const endX = targetPos.centerX;
-        const startY = sourcePos.top + 8;
-        const endY = targetPos.top + 8;
-        const distance = Math.abs(targetPos.index - sourcePos.index);
-        const arcHeight = 80 + distance * 28 + (index % 3) * 12;
-        const controlY = Math.max(26, nodeTop - arcHeight);
+        const direction = endX >= startX ? 1 : -1;
 
         return {
-            key: link.key,
-            path: `M ${startX} ${startY} Q ${(startX + endX) / 2} ${controlY} ${endX} ${endY}`,
-            labelLeft: (startX + endX) / 2 - 34,
-            labelTop: controlY + 8
+            key: transfer.key,
+            rowTop,
+            rowCenter,
+            path: `M ${startX} ${rowCenter} L ${endX - direction * 12} ${rowCenter}`,
+            markerX: endX - direction * 12,
+            markerY: rowCenter,
+            labelLeft: Math.min(startX, endX) + Math.abs(endX - startX) / 2 - 56,
+            labelTop: rowTop + 16
         };
     }).filter(Boolean);
 
     return {
         width,
         height,
-        nodeWidth,
-        nodeHeight,
+        headerTop,
+        headerHeight,
+        laneTop,
+        rowHeight,
+        columnWidth,
+        labelColumnWidth,
         positions,
-        edges
+        rows
     };
 }
 
-function renderFlowGraph(flowData, selectedLinkKey) {
+function renderFlowGraph(flowData, selectedTransferKey) {
     if (!flowData.nodes.length) {
         return '<div class="flow-graph-empty">暂无流程数据</div>';
     }
 
     const layout = buildFlowLayout(flowData);
-    const edgeMap = new Map(layout.edges.map(edge => [edge.key, edge]));
+    const rowMap = new Map(layout.rows.map(row => [row.key, row]));
 
-    const svgPaths = flowData.links.map(link => {
-        const edge = edgeMap.get(link.key);
-        if (!edge) return '';
-        const stateClass = [
-            'flow-network-edge',
-            link.isError ? 'error' : '',
-            link.key === selectedLinkKey ? 'active' : ''
-        ].filter(Boolean).join(' ');
+    const laneGuides = flowData.nodes.map(node => {
+        const position = layout.positions[node.id];
         return `
-            <path class="flow-network-edge-hitbox" d="${edge.path}" fill="none" data-flow-link-key="${link.key}"></path>
-            <path class="${stateClass}" d="${edge.path}" fill="none" data-flow-link-key="${link.key}"></path>
+            <line
+                class="flow-sequence-lane-line"
+                x1="${position.centerX}"
+                y1="${layout.headerTop + layout.headerHeight}"
+                x2="${position.centerX}"
+                y2="${layout.height - 24}"
+            ></line>
         `;
     }).join('');
 
-    const labels = flowData.links.map(link => {
-        const edge = edgeMap.get(link.key);
-        if (!edge) return '';
-        const labelClass = [
-            'flow-network-link-label',
-            link.isError ? 'error' : '',
-            link.key === selectedLinkKey ? 'active' : ''
+    const rowGuides = flowData.transfers.map(transfer => {
+        const row = rowMap.get(transfer.key);
+        if (!row) return '';
+        return `
+            <line
+                class="flow-sequence-row-line"
+                x1="18"
+                y1="${row.rowCenter}"
+                x2="${layout.width - 18}"
+                y2="${row.rowCenter}"
+            ></line>
+        `;
+    }).join('');
+
+    const paths = flowData.transfers.map(transfer => {
+        const row = rowMap.get(transfer.key);
+        if (!row) return '';
+        const lineClass = [
+            'flow-sequence-transfer-line',
+            transfer.isError ? 'error' : '',
+            transfer.key === selectedTransferKey ? 'active' : ''
         ].filter(Boolean).join(' ');
         return `
-            <button
-                type="button"
-                class="${labelClass}"
-                data-flow-link-key="${link.key}"
-                style="left: ${edge.labelLeft}px; top: ${edge.labelTop}px;"
-                title="${escapeHtml(`${link.source} -> ${link.target}`)}"
-            >
-                ${link.transfers.length}次
-            </button>
+            <path class="flow-sequence-transfer-hitbox" d="${row.path}" fill="none" data-flow-transfer-key="${transfer.key}"></path>
+            <path class="${lineClass}" d="${row.path}" fill="none" data-flow-transfer-key="${transfer.key}"></path>
+            <circle class="flow-sequence-transfer-arrow ${transfer.isError ? 'error' : ''} ${transfer.key === selectedTransferKey ? 'active' : ''}" cx="${row.markerX}" cy="${row.markerY}" r="6" data-flow-transfer-key="${transfer.key}"></circle>
         `;
     }).join('');
 
@@ -436,21 +458,22 @@ function renderFlowGraph(flowData, selectedLinkKey) {
         const position = layout.positions[node.id];
         const roles = node.roles.join(' / ');
         const nodeClass = [
-            'flow-network-node',
+            'flow-sequence-node',
             node.isError ? 'error' : ''
         ].filter(Boolean).join(' ');
         return `
             <article
                 class="${nodeClass}"
-                style="left: ${position.left}px; top: ${position.top}px; width: ${layout.nodeWidth}px; min-height: ${layout.nodeHeight}px;"
+                style="left: ${position.left}px; top: ${position.top}px; width: ${layout.columnWidth}px;"
+                title="${escapeHtml(`${node.label} | ${roles || 'Agent'}`)}"
             >
-                <div class="flow-network-node-topline">
-                    <span class="flow-network-node-count">${node.occurrences}次发言</span>
-                    ${node.isError ? '<span class="flow-network-node-error">错误链</span>' : ''}
+                <div class="flow-sequence-node-topline">
+                    <span class="flow-sequence-node-count">${node.occurrences}次发言</span>
+                    ${node.isError ? '<span class="flow-sequence-node-error">错误角色</span>' : ''}
                 </div>
-                <h4 class="flow-network-node-name">${escapeHtml(node.label)}</h4>
-                <div class="flow-network-node-role">${escapeHtml(roles || 'Agent')}</div>
-                <div class="flow-network-node-metrics">
+                <h4 class="flow-sequence-node-name">${escapeHtml(node.label)}</h4>
+                <div class="flow-sequence-node-role">${escapeHtml(roles || 'Agent')}</div>
+                <div class="flow-sequence-node-metrics">
                     <span>出 ${node.outgoing}</span>
                     <span>入 ${node.incoming}</span>
                 </div>
@@ -458,20 +481,62 @@ function renderFlowGraph(flowData, selectedLinkKey) {
         `;
     }).join('');
 
+    const orders = flowData.transfers.map(transfer => {
+        const row = rowMap.get(transfer.key);
+        if (!row) return '';
+        const orderClass = [
+            'flow-sequence-order-badge',
+            transfer.isError ? 'error' : '',
+            transfer.key === selectedTransferKey ? 'active' : ''
+        ].filter(Boolean).join(' ');
+        return `
+            <button
+                type="button"
+                class="${orderClass}"
+                style="left: 18px; top: ${row.rowTop + 16}px;"
+                data-flow-transfer-key="${transfer.key}"
+                title="${escapeHtml(`${transfer.source} -> ${transfer.target}`)}"
+            >
+                ${transfer.order}
+            </button>
+        `;
+    }).join('');
+
+    const labels = flowData.transfers.map(transfer => {
+        const row = rowMap.get(transfer.key);
+        if (!row) return '';
+        const labelClass = [
+            'flow-sequence-transfer-label',
+            transfer.isError ? 'error' : '',
+            transfer.key === selectedTransferKey ? 'active' : ''
+        ].filter(Boolean).join(' ');
+        return `
+            <button
+                type="button"
+                class="${labelClass}"
+                style="left: ${row.labelLeft}px; top: ${row.labelTop}px;"
+                data-flow-transfer-key="${transfer.key}"
+                title="${escapeHtml(transfer.summary)}"
+            >
+                <span class="flow-sequence-transfer-route">${escapeHtml(`${transfer.source} -> ${transfer.target}`)}</span>
+                <span class="flow-sequence-transfer-summary">${escapeHtml(transfer.summary)}</span>
+            </button>
+        `;
+    }).join('');
+
     return `
-        <div class="flow-network-board">
-            <div class="flow-network-guide">节点是 Agent，连线表示相邻步骤中的信息交付。点击连线查看该链路的输入内容。</div>
-            <div class="flow-network-scroll">
-                <div class="flow-network-canvas" style="width: ${layout.width}px; height: ${layout.height}px;">
-                    <svg class="flow-network-svg" viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="none">
-                        ${svgPaths}
+        <div class="flow-sequence-board">
+            <div class="flow-sequence-guide">按顺序从上到下阅读。每条线只代表一次交付，因此不会重叠；点击编号或连线即可查看该次输入。</div>
+            <div class="flow-sequence-scroll">
+                <div class="flow-sequence-canvas" style="width: ${layout.width}px; height: ${layout.height}px;">
+                    <svg class="flow-sequence-svg" viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="none">
+                        ${laneGuides}
+                        ${rowGuides}
+                        ${paths}
                     </svg>
-                    <div class="flow-network-label-layer">
-                        ${labels}
-                    </div>
-                    <div class="flow-network-node-layer">
-                        ${nodes}
-                    </div>
+                    ${orders}
+                    ${labels}
+                    ${nodes}
                 </div>
             </div>
         </div>
@@ -482,7 +547,7 @@ function renderFlowRoster(flowData) {
     return `
         <div class="flow-agent-roster">
             ${flowData.nodes.map(node => `
-                <div class="flow-agent-chip ${node.isError ? 'error' : ''}">
+                <div class="flow-agent-chip ${node.isError ? 'error' : ''}" title="${escapeHtml(`${node.label} | ${node.roles.join(' / ')}`)}">
                     <span class="flow-agent-chip-name">${escapeHtml(node.label)}</span>
                     <span class="flow-agent-chip-meta">${node.roles.map(role => escapeHtml(role)).join(' / ')}</span>
                 </div>
@@ -491,83 +556,84 @@ function renderFlowRoster(flowData) {
     `;
 }
 
-function renderFlowLinkDetail(flowData, selectedLinkKey) {
-    if (!flowData.links.length) {
+function renderFlowLinkDetail(flowData, selectedTransferKey) {
+    if (!flowData.transfers.length) {
         return `
             <div class="flow-link-detail-empty">
-                <div class="flow-link-detail-title">暂无交付链路</div>
+                <div class="flow-link-detail-title">暂无交付步骤</div>
                 <p>当前案例只有单步信息或缺少相邻 Agent 交付。</p>
             </div>
         `;
     }
 
-    const link = flowData.links.find(item => item.key === selectedLinkKey) || flowData.links[0];
-    if (!link) {
+    const transfer = flowData.transfers.find(item => item.key === selectedTransferKey) || flowData.transfers[0];
+    if (!transfer) {
         return '';
     }
 
-    const transferCards = link.transfers.map(transfer => {
-        const handoffText = showChineseTranslation ? transfer.handoffTextCN : transfer.handoffText;
-        const responseText = showChineseTranslation ? transfer.responseTextCN : transfer.responseText;
-
-        return `
-            <article class="flow-transfer-card ${transfer.isError ? 'error' : ''}">
-                <div class="flow-transfer-card-header">
-                    <div>
-                        <div class="flow-transfer-route">${escapeHtml(`${transfer.source} -> ${transfer.target}`)}</div>
-                        <div class="flow-transfer-step">${escapeHtml(`${transfer.stepLabel} -> ${transfer.nextStepLabel}`)}</div>
-                    </div>
-                    ${transfer.isError ? '<span class="flow-transfer-badge">错误交付</span>' : ''}
-                </div>
-                <div class="flow-transfer-summary">${escapeHtml(transfer.summary)}</div>
-                <div class="flow-transfer-block">
-                    <div class="flow-transfer-label">交付内容</div>
-                    <pre>${escapeHtml(handoffText || '无可展示内容')}</pre>
-                </div>
-                <div class="flow-transfer-block secondary">
-                    <div class="flow-transfer-label">接收方下一步响应</div>
-                    <pre>${escapeHtml(responseText || '无可展示内容')}</pre>
-                </div>
-            </article>
-        `;
-    }).join('');
+    const handoffText = showChineseTranslation ? transfer.handoffTextCN : transfer.handoffText;
+    const responseText = showChineseTranslation ? transfer.responseTextCN : transfer.responseText;
 
     return `
         <div class="flow-link-detail-panel">
             <div class="flow-link-detail-header">
                 <div>
-                    <div class="flow-link-detail-kicker">当前选中链路</div>
-                    <h4 class="flow-link-detail-title">${escapeHtml(`${link.source} -> ${link.target}`)}</h4>
+                    <div class="flow-link-detail-kicker">当前选中交付</div>
+                    <h4 class="flow-link-detail-title">第 ${transfer.order} 步: ${escapeHtml(`${transfer.source} -> ${transfer.target}`)}</h4>
                 </div>
                 <div class="flow-link-detail-meta">
-                    <span>${link.transfers.length} 次交付</span>
-                    ${link.isError ? '<span class="flow-link-detail-error">包含错误步骤</span>' : '<span>链路正常</span>'}
+                    <span>${escapeHtml(`${transfer.stepLabel} -> ${transfer.nextStepLabel}`)}</span>
+                    ${transfer.isError ? '<span class="flow-link-detail-error">这是错误交付</span>' : '<span>顺序正常</span>'}
                 </div>
             </div>
             <div class="flow-transfer-list">
-                ${transferCards}
+                <article class="flow-transfer-card ${transfer.isError ? 'error' : ''}">
+                    <div class="flow-transfer-card-header">
+                        <div>
+                            <div class="flow-transfer-route">${escapeHtml(`${transfer.source} -> ${transfer.target}`)}</div>
+                            <div class="flow-transfer-step">${escapeHtml(`${transfer.stepLabel} -> ${transfer.nextStepLabel}`)}</div>
+                        </div>
+                        ${transfer.isError ? '<span class="flow-transfer-badge">错误交付</span>' : '<span class="flow-transfer-badge neutral">已选中</span>'}
+                    </div>
+                    <div class="flow-transfer-summary">${escapeHtml(transfer.summary)}</div>
+                    <div class="flow-transfer-block">
+                        <div class="flow-transfer-label">交付内容</div>
+                        <pre>${escapeHtml(handoffText || '无可展示内容')}</pre>
+                    </div>
+                    <div class="flow-transfer-block secondary">
+                        <div class="flow-transfer-label">接收方下一步响应</div>
+                        <pre>${escapeHtml(responseText || '无可展示内容')}</pre>
+                    </div>
+                </article>
             </div>
         </div>
     `;
 }
 
 function bindFlowGraphEvents(container, caseId) {
-    container.querySelectorAll('[data-flow-link-key]').forEach(element => {
-        element.addEventListener('click', () => {
-            const { flowLinkKey } = element.dataset;
-            renderFlowVisualization(caseId, flowLinkKey);
-        });
+    container.addEventListener('click', (event) => {
+        const target = event.target.closest('[data-flow-transfer-key]');
+        if (!target) {
+            return;
+        }
+
+        const { flowTransferKey } = target.dataset;
+        if (!flowTransferKey) {
+            return;
+        }
+
+        renderFlowVisualization(caseId, flowTransferKey);
     });
 }
 
-function renderFlowVisualization(caseId, preferredLinkKey = null) {
+function renderFlowVisualization(caseId, preferredTransferKey = null) {
     const item = allData.find(d => d.id === caseId);
     if (!item) return;
 
     const flowData = buildFlowNetwork(item);
-    const selectedLinkKey = resolveSelectedFlowLink(flowData, preferredLinkKey);
+    const selectedTransferKey = resolveSelectedFlowTransfer(flowData, preferredTransferKey);
     currentFlowItem = item;
-    currentFlowLinkKey = selectedLinkKey;
+    currentFlowTransferKey = selectedTransferKey;
 
     document.getElementById('flowCaseTitle').textContent = `案例 ${item.id}`;
     document.getElementById('flowCaseMeta').innerHTML = `
@@ -575,7 +641,7 @@ function renderFlowVisualization(caseId, preferredLinkKey = null) {
         <span class="flow-badge level-badge ${item.levelClass}">${item.levelLabel}</span>
         <span class="flow-badge">错误: ${escapeHtml(item.mistake_agent)}</span>
         <span class="flow-badge">Agent节点: ${flowData.nodes.length}</span>
-        <span class="flow-badge">交付链: ${flowData.links.length}</span>
+        <span class="flow-badge">交付步骤: ${flowData.transfers.length}</span>
     `;
 
     const taskPanel = document.getElementById('flowTaskPanel');
@@ -590,8 +656,8 @@ function renderFlowVisualization(caseId, preferredLinkKey = null) {
         container.innerHTML = `
             ${renderFlowRoster(flowData)}
             <div class="flow-network-layout">
-                ${renderFlowGraph(flowData, selectedLinkKey)}
-                ${renderFlowLinkDetail(flowData, selectedLinkKey)}
+                ${renderFlowGraph(flowData, selectedTransferKey)}
+                ${renderFlowLinkDetail(flowData, selectedTransferKey)}
             </div>
         `;
         bindFlowGraphEvents(container, caseId);
@@ -1344,7 +1410,7 @@ function setupEventListeners() {
             document.getElementById('flowErrorPanel').style.display = 'none';
             document.getElementById('flowAnswerPanel').style.display = 'none';
             currentFlowItem = null;
-            currentFlowLinkKey = null;
+            currentFlowTransferKey = null;
             renderFlowTranslation(null);
         }
     });
@@ -1355,7 +1421,7 @@ function setupEventListeners() {
             showChineseTranslation = e.target.checked;
             renderFlowTranslation(currentFlowItem);
             if (currentFlowItem) {
-                renderFlowVisualization(currentFlowItem.id, currentFlowLinkKey);
+                renderFlowVisualization(currentFlowItem.id, currentFlowTransferKey);
             }
         });
     }
