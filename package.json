@@ -1,0 +1,15 @@
+{
+  "name": "who-when-visualization",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Workers dashboard for Who&When visualization.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "preview": "npx serve public",
+    "data:build": "node data-loader.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

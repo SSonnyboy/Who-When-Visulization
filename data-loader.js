@@ -7,7 +7,7 @@ const path = require('path');
 const dataDir = path.join(__dirname, '..');
 const algorithmDir = path.join(dataDir, 'data', 'Algorithm-Generated');
 const handcraftedDir = path.join(dataDir, 'data', 'Hand-Crafted');
-const outputFile = path.join(__dirname, 'all-data.json');
+const outputFile = path.join(__dirname, 'public', 'who_when', 'all-data.json');
 
 console.log('开始加载数据...');
 
@@ -53,6 +53,7 @@ handcraftedFiles.forEach(file => {
 console.log(`总共加载 ${allData.length} 个案例`);
 
 // 保存合并的数据
+fs.mkdirSync(path.dirname(outputFile), { recursive: true });
 fs.writeFileSync(outputFile, JSON.stringify(allData, null, 2), 'utf8');
 
 console.log(`数据已保存到: ${outputFile}`);

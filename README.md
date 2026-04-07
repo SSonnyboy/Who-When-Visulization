@@ -54,106 +54,80 @@
 
 ## 安装和使用
 
-### 方法一：使用预加载数据（推荐）
+### 方法一：Cloudflare Workers 本地开发（推荐）
 
-1. **生成合并数据文件**：
+1. **安装依赖**：
    ```bash
-   cd dashboard
-   node data-loader.js
-   ```
-   这将生成 `all-data.json` 文件，包含所有数据。
-
-2. **修改app.js**：
-   找到 `loadData()` 函数，替换为以下代码：
-   ```javascript
-   async function loadData() {
-       try {
-           const response = await fetch('all-data.json');
-           if (!response.ok) throw new Error('Failed to load data');
-           
-           allData = await response.json();
-           filteredData = [...allData];
-           
-           console.log(`Loaded ${allData.length} cases successfully`);
-           initializeDashboard();
-       } catch (error) {
-           console.error('Error loading data:', error);
-           showError('无法加载数据，请检查数据文件路径');
-       }
-   }
+   npm install
    ```
 
-3. **打开Dashboard**：
-   使用本地服务器打开 `index.html`：
+2. **启动 Worker**：
    ```bash
-   # 使用Python
-   python -m http.server 8000
-   
-   # 或使用Node.js
-   npx serve
+   npm run dev
    ```
-   
-   然后在浏览器中访问 `http://localhost:8000`
 
-### 方法二：直接加载原始数据
+3. **打开 Dashboard**：
+   访问 `http://127.0.0.1:8787/who_when/`
 
-1. 确保数据文件位于正确的路径：
-   - `../data/Algorithm-Generated/*.json`
-   - `../data/Hand-Crafted/*.json`
+### 方法二：静态预览
 
-2. 使用本地服务器打开 `index.html`
+如果只想预览前端页面，也可以直接启动一个 Node.js 静态服务器：
 
-### 方法三：部署到 Cloudflare Python Worker（新增）
+```bash
+npx serve public
+```
 
-当前仓库已增加一套可直接部署的 Cloudflare Python Worker 后端：
+### 方法三：Cloudflare Workers JavaScript 后端部署
+
+当前仓库使用 Cloudflare Workers 的 JavaScript 模块后端，不再依赖 Python Worker：
 
 - `wrangler.toml`：Worker 配置文件
-- `src/entry.py`：Python Worker 入口
-- `.assetsignore`：避免把源码和脚本作为静态资源上传
-- `pyproject.toml`：Python Worker 本地开发依赖定义
+- `src/index.mjs`：Workers JavaScript 入口
+- `package.json`：Node.js 依赖和 npm scripts
+- `public/who_when/`：标准化的静态资源目录
 
 #### 路由说明
 
-- 目标访问地址：`https://vis.102465.xyz/who&when`
-- Wrangler 中实际配置为：`vis.102465.xyz/who&when*`
+- 目标访问地址：`https://vis.102465.xyz/who_when`
+- Wrangler 中实际配置为：`vis.102465.xyz/who_when*`
 - 这里使用的是 **Route**，不是 `custom_domain = true`
 
-原因是 Cloudflare 的 Custom Domain 只能绑定整个域名或子域名，而你这里要求的是子路径 `/who&when`，因此必须使用 Route。
+原因是 Cloudflare 的 Custom Domain 只能绑定整个域名或子域名，而这里要求的是子路径 `/who_when`，因此必须使用 Route。
 
-Worker 会自动将 `https://vis.102465.xyz/who&when` 307 重定向到 `https://vis.102465.xyz/who&when/`，这样现有的 `index.html`、`app.js`、`styles.css` 和 `all-data-cn.json` 相对路径都能正常解析。
+静态资源放在 `public/who_when/` 下，Cloudflare 会直接按子目录提供页面与资源；Worker 只负责 `/who_when/api/*` 这组接口。
 
 #### 部署前准备
 
 1. 确保 Cloudflare 中已接入 `102465.xyz` 区域
 2. 确保 `vis.102465.xyz` 有对应 DNS 记录，并且是 Cloudflare 代理状态（橙云）
-3. 安装 Python Worker 开发依赖：
+3. 安装 Node.js 依赖：
 
    ```bash
-   uv sync --group dev
+   npm install
    ```
 
 #### 本地开发
 
 ```bash
-uv run pywrangler dev
+npm run dev
 ```
 
 本地启动后，访问：
 
-- `http://127.0.0.1:8787/who&when/`
+- `http://127.0.0.1:8787/who_when/`
 
 #### 部署命令
 
 ```bash
-uv run pywrangler deploy
+npm run deploy
 ```
 
 #### 后端 API
 
-- `GET /who&when/api/health`：健康检查
-- `GET /who&when/api/summary?lang=cn`：返回数据集摘要
-- `GET /who&when/api/cases?lang=cn&dataset=all&limit=20&offset=0&search=`：分页案例列表
-- `GET /who&when/api/cases/A1?lang=cn`：单案例详情
+- `GET /who_when/api/health`：健康检查
+- `GET /who_when/api/summary?lang=cn`：返回数据集摘要
+- `GET /who_when/api/cases?lang=cn&dataset=all&limit=20&offset=0&search=`：分页案例列表
+- `GET /who_when/api/cases/A1?lang=cn`：单案例详情
 
 其中 `lang` 支持：
 
@@ -287,17 +261,18 @@ uv run pywrangler deploy
 
 ```
 Who-When-Visulization/
-├── index.html          # 主页面
-├── styles.css          # 样式文件
-├── app.js              # 应用逻辑
 ├── data-loader.js      # 数据加载器（Node.js）
-├── all-data.json       # 英文合并数据
-├── all-data-cn.json    # 中文合并数据
 ├── wrangler.toml       # Cloudflare Worker 配置
-├── pyproject.toml      # Python Worker 依赖定义
-├── .assetsignore       # 静态资源忽略规则
+├── package.json        # Node.js 依赖和 npm scripts
+├── public/
+│   └── who_when/
+│       ├── index.html       # 主页面
+│       ├── styles.css       # 样式文件
+│       ├── app.js           # 应用逻辑
+│       ├── all-data.json    # 英文合并数据
+│       └── all-data-cn.json # 中文合并数据
 ├── src/
-│   └── entry.py        # Python Worker 后端入口
+│   └── index.mjs       # JavaScript Worker 后端入口
 └── README.md           # 本文档
 ```
 

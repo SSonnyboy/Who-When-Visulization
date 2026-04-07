@@ -1,35 +1,37 @@
 # 快速启动指南
 
-## 方式一：使用预加载数据（推荐）
+## 方式一：Cloudflare Workers 本地开发（推荐）
+
+### 1. 安装依赖
+```bash
+npm install
+```
+
+### 2. 启动 Worker
+```bash
+npm run dev
+```
+
+### 3. 打开浏览器
+访问 `http://127.0.0.1:8787/who_when/`
+
+---
+
+## 方式二：使用预加载数据做静态预览
 
 ### 1. 生成合并数据文件
 ```bash
-cd dashboard
 node data-loader.js
 ```
 这将生成 `all-data.json` 文件。
 
 ### 2. 启动本地服务器
 ```bash
-# 使用Python
-python -m http.server 8000
-
-# 或使用Node.js
-npx serve
+npx serve public
 ```
 
 ### 3. 打开浏览器
-访问 `http://localhost:8000`
-
----
-
-## 方式二：直接使用（需要原始数据文件）
-
-确保数据文件位于以下位置：
-- `../data/Algorithm-Generated/*.json` (126个文件)
-- `../data/Hand-Crafted/*.json` (58个文件)
-
-然后启动本地服务器并打开浏览器。
+访问 `http://localhost:3000/who_when/`
 
 ---
 

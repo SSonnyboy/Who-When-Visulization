@@ -1,7 +1,6 @@
 name = "who-when-visualization"
-main = "src/entry.py"
+main = "src/index.mjs"
 compatibility_date = "2026-04-06"
-compatibility_flags = ["python_workers"]
 workers_dev = true
 
 [vars]
@@ -13,6 +12,6 @@ pattern = "vis.102465.xyz/who_when*"
 zone_name = "102465.xyz"
 
 [assets]
-directory = "."
+directory = "./public"
 binding = "ASSETS"
-run_worker_first = ["/who_when*"]
+run_worker_first = ["/who_when/api/*"]
